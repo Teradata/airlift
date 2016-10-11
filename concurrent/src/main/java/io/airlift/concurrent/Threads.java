@@ -28,6 +28,15 @@ public final class Threads
                 .build();
     }
 
+    public static ThreadFactory prioritizedThreadsNamed(String nameFormat, int priority)
+    {
+        return new ThreadFactoryBuilder()
+                .setNameFormat(nameFormat)
+                .setThreadFactory(new ContextClassLoaderThreadFactory(Thread.currentThread().getContextClassLoader(), defaultThreadFactory()))
+                .setPriority(priority)
+                .build();
+    }
+
     /**
      * Creates a {@link ThreadFactory} that creates named daemon threads.
      * using the specified naming format.
@@ -41,6 +50,16 @@ public final class Threads
                 .setNameFormat(nameFormat)
                 .setDaemon(true)
                 .setThreadFactory(new ContextClassLoaderThreadFactory(Thread.currentThread().getContextClassLoader(), defaultThreadFactory()))
+                .build();
+    }
+
+    public static ThreadFactory prioritizedDaemonThreadsNamed(String nameFormat, int priority)
+    {
+        return new ThreadFactoryBuilder()
+                .setNameFormat(nameFormat)
+                .setDaemon(true)
+                .setThreadFactory(new ContextClassLoaderThreadFactory(Thread.currentThread().getContextClassLoader(), defaultThreadFactory()))
+                .setPriority(priority)
                 .build();
     }
 
