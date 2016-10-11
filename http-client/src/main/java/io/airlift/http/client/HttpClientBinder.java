@@ -20,6 +20,7 @@ import com.google.inject.Binder;
 import com.google.inject.binder.LinkedBindingBuilder;
 import com.google.inject.multibindings.Multibinder;
 import io.airlift.configuration.ConfigDefaults;
+import io.airlift.http.client.jetty.SocketConfigurator;
 
 import java.lang.annotation.Annotation;
 import java.util.Collection;
@@ -53,18 +54,21 @@ public class HttpClientBinder
     {
         binder.install(module);
         return new HttpClientBindingBuilder(module,
-                newSetBinder(binder, HttpRequestFilter.class, module.getFilterQualifier()));
+                newSetBinder(binder, HttpRequestFilter.class, module.getFilterQualifier()),
+                newSetBinder(binder, SocketConfigurator.class, module.getFilterQualifier()));
     }
 
     public static class HttpClientBindingBuilder
     {
         private final HttpClientModule module;
-        private final Multibinder<HttpRequestFilter> multibinder;
+        private final Multibinder<HttpRequestFilter> filterBinder;
+        private final Multibinder<SocketConfigurator> socketConfiguratorBinder;
 
-        public HttpClientBindingBuilder(HttpClientModule module, Multibinder<HttpRequestFilter> multibinder)
+        public HttpClientBindingBuilder(HttpClientModule module, Multibinder<HttpRequestFilter> filterBinder, Multibinder<SocketConfigurator> socketConfiguratorBinder)
         {
             this.module = module;
-            this.multibinder = multibinder;
+            this.filterBinder = filterBinder;
+            this.socketConfiguratorBinder = socketConfiguratorBinder;
         }
 
         public HttpClientBindingBuilder withAlias(Class<? extends Annotation> alias)
@@ -89,12 +93,18 @@ public class HttpClientBinder
 
         public LinkedBindingBuilder<HttpRequestFilter> addFilterBinding()
         {
-            return multibinder.addBinding();
+            return filterBinder.addBinding();
         }
 
         public HttpClientBindingBuilder withFilter(Class<? extends HttpRequestFilter> filterClass)
         {
-            multibinder.addBinding().to(filterClass);
+            filterBinder.addBinding().to(filterClass);
+            return this;
+        }
+
+        public HttpClientBindingBuilder withSocketConfigurator(SocketConfigurator socketConfigurator)
+        {
+            socketConfiguratorBinder.addBinding().toInstance(socketConfigurator);
             return this;
         }
 

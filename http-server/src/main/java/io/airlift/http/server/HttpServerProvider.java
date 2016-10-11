@@ -32,6 +32,7 @@ import javax.management.MBeanServer;
 import javax.servlet.Filter;
 import javax.servlet.Servlet;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 
@@ -57,6 +58,7 @@ public class HttpServerProvider
     private final Set<Filter> adminFilters;
     private TraceTokenManager traceTokenManager;
     private final EventClient eventClient;
+    private Collection<SocketConfigurator> socketConfigurators;
 
     @Inject
     public HttpServerProvider(HttpServerInfo httpServerInfo,
@@ -126,6 +128,12 @@ public class HttpServerProvider
         this.traceTokenManager = tokenManager;
     }
 
+    @Inject(optional = true)
+    public void setSocketConfigurators(@Nullable Collection<SocketConfigurator> socketConfigurators)
+    {
+        this.socketConfigurators = socketConfigurators;
+    }
+
     public HttpServer get()
     {
         try {
@@ -143,7 +151,8 @@ public class HttpServerProvider
                     loginService,
                     traceTokenManager,
                     stats,
-                    eventClient);
+                    eventClient,
+                    socketConfigurators);
             httpServer.start();
             return httpServer;
         }

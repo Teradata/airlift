@@ -64,10 +64,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
+import java.net.Socket;
 import java.net.URI;
 import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -88,6 +91,7 @@ import java.util.stream.Collectors;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 import static java.lang.Math.min;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -153,6 +157,16 @@ public class JettyHttpClient
             Optional<JettyIoPool> jettyIoPool,
             Iterable<? extends HttpRequestFilter> requestFilters)
     {
+        this(config, kerberosConfig, jettyIoPool, requestFilters, ImmutableList.of());
+    }
+
+    public JettyHttpClient(
+            HttpClientConfig config,
+            KerberosConfig kerberosConfig,
+            Optional<JettyIoPool> jettyIoPool,
+            Iterable<? extends HttpRequestFilter> requestFilters,
+            Collection<? extends SocketConfigurator> socketConfigurators)
+    {
         checkNotNull(config, "config is null");
         checkNotNull(jettyIoPool, "jettyIoPool is null");
         checkNotNull(requestFilters, "requestFilters is null");
@@ -177,12 +191,27 @@ public class JettyHttpClient
 
         HttpClientTransport transport;
         if (config.isHttp2Enabled()) {
+            checkState(socketConfigurators.isEmpty(), "socket customization is not yet supported for http2");
             HTTP2Client client = new HTTP2Client();
             client.setSelectors(CLIENT_TRANSPORT_SELECTORS);
             transport = new HttpClientTransportOverHTTP2(client);
         }
         else {
-            transport = new HttpClientTransportOverHTTP(CLIENT_TRANSPORT_SELECTORS);
+            transport = new HttpClientTransportOverHTTP(CLIENT_TRANSPORT_SELECTORS)
+            {
+                @Override
+                protected void configure(HttpClient client, SocketChannel channel)
+                        throws IOException
+                {
+                    super.configure(client, channel);
+                    if (socketConfigurators != null) {
+                        Socket socket = channel.socket();
+                        for (SocketConfigurator socketConfigurator : socketConfigurators) {
+                            socketConfigurator.apply(socket);
+                        }
+                    }
+                }
+            };
         }
 
         if (authenticationEnabled) {

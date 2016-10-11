@@ -16,6 +16,7 @@
 package io.airlift.http.server;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.primitives.Ints;
@@ -24,12 +25,14 @@ import io.airlift.http.server.HttpServerBinder.HttpResourceBinding;
 import io.airlift.node.NodeInfo;
 import io.airlift.tracetoken.TraceTokenManager;
 import org.eclipse.jetty.http2.server.HTTP2CServerConnectionFactory;
+import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.jmx.MBeanContainer;
 import org.eclipse.jetty.security.ConstraintMapping;
 import org.eclipse.jetty.security.ConstraintSecurityHandler;
 import org.eclipse.jetty.security.LoginService;
 import org.eclipse.jetty.security.SecurityHandler;
 import org.eclipse.jetty.security.authentication.BasicAuthenticator;
+import org.eclipse.jetty.server.ConnectionFactory;
 import org.eclipse.jetty.server.Connector;
 import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.HttpConnectionFactory;
@@ -47,9 +50,11 @@ import org.eclipse.jetty.server.handler.gzip.GzipHandler;
 import org.eclipse.jetty.servlet.FilterHolder;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
+import org.eclipse.jetty.util.annotation.Name;
 import org.eclipse.jetty.util.security.Constraint;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
+import org.eclipse.jetty.util.thread.Scheduler;
 import org.eclipse.jetty.util.thread.ThreadPool;
 import org.weakref.jmx.Managed;
 
@@ -63,6 +68,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.Socket;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.cert.Certificate;
@@ -70,6 +76,7 @@ import java.security.cert.X509Certificate;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -106,7 +113,8 @@ public class HttpServer
             LoginService loginService,
             TraceTokenManager tokenManager,
             RequestStats stats,
-            EventClient eventClient)
+            EventClient eventClient,
+            Collection<SocketConfigurator> socketConfigurators)
             throws IOException
     {
         Preconditions.checkNotNull(httpServerInfo, "httpServerInfo is null");
@@ -150,7 +158,7 @@ public class HttpServer
             HttpConnectionFactory http1 = new HttpConnectionFactory(httpConfiguration);
             HTTP2CServerConnectionFactory http2c = new HTTP2CServerConnectionFactory(httpConfiguration);
             http2c.setMaxConcurrentStreams(config.getHttp2MaxConcurrentStreams());
-            httpConnector = new ServerConnector(server, null, null, null, acceptors == null ? -1 : acceptors, selectors == null ? -1 : selectors, http1, http2c);
+            httpConnector = new ConfigurableSocketServerConnector(server, null, null, null, acceptors == null ? -1 : acceptors, selectors == null ? -1 : selectors, socketConfigurators, http1, http2c);
             httpConnector.setName("http");
             httpConnector.setPort(httpServerInfo.getHttpUri().getPort());
             httpConnector.setIdleTimeout(config.getNetworkMaxIdleTime().toMillis());
@@ -182,7 +190,7 @@ public class HttpServer
 
             Integer acceptors = config.getHttpsAcceptorThreads();
             Integer selectors = config.getHttpsSelectorThreads();
-            httpsConnector = new ServerConnector(server, null, null, null, acceptors == null ? -1 : acceptors, selectors == null ? -1 : selectors, sslConnectionFactory, new HttpConnectionFactory(httpsConfiguration));
+            httpsConnector = new ConfigurableSocketServerConnector(server, null, null, null, acceptors == null ? -1 : acceptors, selectors == null ? -1 : selectors, socketConfigurators, sslConnectionFactory, new HttpConnectionFactory(httpsConfiguration));
             httpsConnector.setName("https");
             httpsConnector.setPort(httpServerInfo.getHttpsUri().getPort());
             httpsConnector.setIdleTimeout(config.getNetworkMaxIdleTime().toMillis());
@@ -214,12 +222,12 @@ public class HttpServer
                 SslContextFactory sslContextFactory = new SslContextFactory(config.getKeystorePath());
                 sslContextFactory.setKeyStorePassword(config.getKeystorePassword());
                 SslConnectionFactory sslConnectionFactory = new SslConnectionFactory(sslContextFactory, "http/1.1");
-                adminConnector = new ServerConnector(server, adminThreadPool, null, null, 0, -1, sslConnectionFactory, new HttpConnectionFactory(adminConfiguration));
+                adminConnector = new ConfigurableSocketServerConnector(server, adminThreadPool, null, null, 0, -1, socketConfigurators, sslConnectionFactory, new HttpConnectionFactory(adminConfiguration));
             } else {
                 HttpConnectionFactory http1 = new HttpConnectionFactory(adminConfiguration);
                 HTTP2CServerConnectionFactory http2c = new HTTP2CServerConnectionFactory(adminConfiguration);
                 http2c.setMaxConcurrentStreams(config.getHttp2MaxConcurrentStreams());
-                adminConnector = new ServerConnector(server, adminThreadPool, null, null, -1, -1, http1, http2c);
+                adminConnector = new ConfigurableSocketServerConnector(server, adminThreadPool, null, null, -1, -1, socketConfigurators, http1, http2c);
             }
 
             adminConnector.setName("admin");
@@ -435,5 +443,33 @@ public class HttpServer
             }
         }
         return certificates.build();
+    }
+
+    private static class ConfigurableSocketServerConnector
+            extends ServerConnector
+    {
+        private final Collection<SocketConfigurator> socketConfigurators;
+
+        ConfigurableSocketServerConnector(@Name("server") Server server, @Name("executor") Executor executor, @Name("scheduler") Scheduler scheduler, @Name("bufferPool") ByteBufferPool bufferPool, @Name("acceptors") int acceptors, @Name("selectors") int selectors, Collection<SocketConfigurator> socketConfigurators, @Name("factories") ConnectionFactory... factories)
+        {
+            super(server, executor, scheduler, bufferPool, acceptors, selectors, factories);
+            this.socketConfigurators = socketConfigurators;
+        }
+
+        @Override
+        protected void configure(Socket socket)
+        {
+            super.configure(socket);
+            if (socketConfigurators != null) {
+                for (SocketConfigurator socketConfigurator : socketConfigurators) {
+                    try {
+                        socketConfigurator.apply(socket);
+                    }
+                    catch (IOException e) {
+                        throw Throwables.propagate(e);
+                    }
+                }
+            }
+        }
     }
 }

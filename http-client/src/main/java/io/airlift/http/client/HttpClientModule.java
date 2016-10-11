@@ -28,6 +28,7 @@ import io.airlift.configuration.ConfigDefaults;
 import io.airlift.http.client.jetty.JettyHttpClient;
 import io.airlift.http.client.jetty.JettyIoPool;
 import io.airlift.http.client.jetty.JettyIoPoolConfig;
+import io.airlift.http.client.jetty.SocketConfigurator;
 import io.airlift.http.client.spnego.KerberosConfig;
 import io.airlift.log.Logger;
 
@@ -90,6 +91,9 @@ public class HttpClientModule
         // kick off the binding for the filter set
         newSetBinder(binder, HttpRequestFilter.class, filterQualifier(annotation));
 
+        // kick off the binding for the socket configurator set
+        newSetBinder(binder, SocketConfigurator.class, filterQualifier(annotation));
+
         // export stats
         newExporter(binder).export(HttpClient.class).annotatedWith(annotation).withGeneratedName();
     }
@@ -126,7 +130,7 @@ public class HttpClientModule
 
             HttpClientConfig config = injector.getInstance(Key.get(HttpClientConfig.class, annotation));
             Set<HttpRequestFilter> filters = injector.getInstance(filterKey(annotation));
-
+            Set<SocketConfigurator> socketConfigurators = injector.getInstance(socketConfiguratorKey(annotation));
             JettyIoPoolManager ioPoolProvider;
             if (injector.getExistingBinding(Key.get(JettyIoPoolManager.class, annotation)) != null) {
                 log.debug("HttpClient %s uses private IO thread pool", name);
@@ -137,7 +141,7 @@ public class HttpClientModule
                 ioPoolProvider = injector.getInstance(JettyIoPoolManager.class);
             }
 
-            JettyHttpClient client = new JettyHttpClient(config, kerberosConfig, Optional.of(ioPoolProvider.get()), ImmutableList.copyOf(filters));
+            JettyHttpClient client = new JettyHttpClient(config, kerberosConfig, Optional.of(ioPoolProvider.get()), ImmutableList.copyOf(filters), ImmutableList.copyOf(socketConfigurators));
             ioPoolProvider.addClient(client);
             return client;
         }
@@ -217,6 +221,11 @@ public class HttpClientModule
     private static Key<Set<HttpRequestFilter>> filterKey(Class<? extends Annotation> annotation)
     {
         return Key.get(new TypeLiteral<Set<HttpRequestFilter>>() {}, filterQualifier(annotation));
+    }
+
+    private static Key<Set<SocketConfigurator>> socketConfiguratorKey(Class<? extends Annotation> annotation)
+    {
+        return Key.get(new TypeLiteral<Set<SocketConfigurator>>() {}, filterQualifier(annotation));
     }
 
     private static CompositeQualifier filterQualifier(Class<? extends Annotation> annotation)

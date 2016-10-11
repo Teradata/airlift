@@ -82,7 +82,8 @@ public class TestingHttpServer
                 null,
                 new TraceTokenManager(),
                 new RequestStats(),
-                new NullEventClient());
+                new NullEventClient(),
+                ImmutableSet.of());
         this.httpServerInfo = httpServerInfo;
     }
 
