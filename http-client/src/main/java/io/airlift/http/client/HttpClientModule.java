@@ -25,10 +25,10 @@ import com.google.inject.Provider;
 import com.google.inject.Scopes;
 import com.google.inject.TypeLiteral;
 import io.airlift.configuration.ConfigDefaults;
+import io.airlift.configuration.SocketConfigurator;
 import io.airlift.http.client.jetty.JettyHttpClient;
 import io.airlift.http.client.jetty.JettyIoPool;
 import io.airlift.http.client.jetty.JettyIoPoolConfig;
-import io.airlift.http.client.jetty.SocketConfigurator;
 import io.airlift.http.client.spnego.KerberosConfig;
 import io.airlift.log.Logger;
 

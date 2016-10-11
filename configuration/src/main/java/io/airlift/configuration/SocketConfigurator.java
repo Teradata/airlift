@@ -1,4 +1,4 @@
-package io.airlift.http.client.jetty;
+package io.airlift.configuration;
 
 import java.io.IOException;
 import java.net.Socket;

@@ -20,7 +20,7 @@ import com.google.inject.Binder;
 import com.google.inject.binder.LinkedBindingBuilder;
 import com.google.inject.multibindings.Multibinder;
 import io.airlift.configuration.ConfigDefaults;
-import io.airlift.http.client.jetty.SocketConfigurator;
+import io.airlift.configuration.SocketConfigurator;
 
 import java.lang.annotation.Annotation;
 import java.util.Collection;

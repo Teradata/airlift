@@ -10,6 +10,7 @@ import com.google.common.io.CountingInputStream;
 import com.google.common.net.HostAndPort;
 import com.google.common.primitives.Ints;
 import com.google.common.util.concurrent.AbstractFuture;
+import io.airlift.configuration.SocketConfigurator;
 import io.airlift.http.client.BodyGenerator;
 import io.airlift.http.client.FileBodyGenerator;
 import io.airlift.http.client.HeaderName;
